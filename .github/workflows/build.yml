@@ -1,0 +1,75 @@
+name: Build DramaDrop
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            target: arm64-apple-macos14.0
+          - runner: macos-13
+            arch: x64
+            target: x86_64-apple-macos14.0
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build app bundle
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p build/DramaDrop.app/Contents/MacOS
+          cp DramaDrop/Info.plist build/DramaDrop.app/Contents/Info.plist
+
+          SDKROOT="$(xcrun --show-sdk-path --sdk macosx)"
+
+          CLANG_MODULE_CACHE_PATH="$PWD/.module-cache" swiftc \
+            -parse-as-library \
+            -target "${{ matrix.target }}" \
+            -sdk "$SDKROOT" \
+            DramaDrop/App.swift \
+            DramaDrop/CalendarService.swift \
+            DramaDrop/StorageManager.swift \
+            DramaDrop/AudioEngine.swift \
+            DramaDrop/ScheduleEngine.swift \
+            -o build/DramaDrop.app/Contents/MacOS/DramaDrop \
+            -framework SwiftUI \
+            -framework EventKit \
+            -framework AppKit \
+            -framework UniformTypeIdentifiers \
+            -framework AVFoundation
+
+          codesign --force --sign - build/DramaDrop.app
+
+      - name: Package release archive
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p dist
+          ditto -c -k --keepParent build/DramaDrop.app "dist/DramaDrop-macos-${{ matrix.arch }}.zip"
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DramaDrop-${{ matrix.arch }}
+          path: dist/DramaDrop-macos-${{ matrix.arch }}.zip
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/DramaDrop-macos-${{ matrix.arch }}.zip
+          generate_release_notes: true

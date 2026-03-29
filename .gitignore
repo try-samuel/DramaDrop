@@ -1,0 +1,11 @@
+.DS_Store
+.build/
+.module-cache/
+DerivedData/
+build/
+dist/
+
+*.swp
+*.xcuserstate
+
+xcuserdata/
